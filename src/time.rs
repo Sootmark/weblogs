@@ -82,9 +82,78 @@ pub(crate) fn log4j(text: &str) -> Option<Ts> {
     ))
 }
 
+/// ISO 8601 (`2020-01-11T16:55:20.356586Z`, `2021-10-14T22:17:11+00:00`):
+/// UTC with `Z` or an offset, local without (`2022-04-01T08:51:42`).
+pub(crate) fn iso8601(text: &str) -> Option<Ts> {
+    let (date, clock) = text.trim().split_once('T')?;
+    let mut date = date.splitn(3, '-');
+    let number = |t: Option<&str>| t?.parse::<i64>().ok();
+    let year = number(date.next())?;
+    let month = u32::try_from(number(date.next())?).ok()?;
+    let day = u32::try_from(number(date.next())?).ok()?;
+    let (clock, zone) = match clock.find(['Z', '+', '-']) {
+        Some(at) => (&clock[..at], Some(&clock[at..])),
+        None => (clock, None),
+    };
+    let (clock, fraction) = clock.split_once('.').unwrap_or((clock, ""));
+    let mut clock = clock.splitn(3, ':');
+    let ticks = ticks(
+        (year, month, day),
+        number(clock.next())?,
+        number(clock.next())?,
+        number(clock.next())?,
+    )?;
+    let (sub, precision) = fraction_ticks(fraction)?;
+    let local = Ts::from_local_ticks(ticks + sub, precision);
+    match zone {
+        None => Some(local),
+        Some("Z") => Some(local.assume_offset(0)),
+        Some(offset) => Some(local.assume_offset(offset_minutes(&offset.replace(':', ""))?)),
+    }
+}
+
+/// A second's fraction in ticks, and its precision.
+fn fraction_ticks(fraction: &str) -> Option<(i64, Precision)> {
+    const TICK_DIGITS: usize = 7;
+    if fraction.is_empty() {
+        return Some((0, Precision::Second));
+    }
+    if fraction.len() > TICK_DIGITS || !fraction.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let precision = match fraction.len() {
+        1..=3 => Precision::Millisecond,
+        4..=6 => Precision::Microsecond,
+        _ => Precision::Tick,
+    };
+    Some((
+        format!("{fraction:0<TICK_DIGITS$}").parse().ok()?,
+        precision,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn iso_times() {
+        let iso = |t: &str| iso8601(t).and_then(|t| t.to_iso8601());
+        assert_eq!(
+            iso("2020-01-11T16:55:20.356586Z").as_deref(),
+            Some("2020-01-11T16:55:20.3565860Z")
+        );
+        assert_eq!(
+            iso("2021-10-14T22:17:11+02:00").as_deref(),
+            Some("2021-10-14T20:17:11.0000000Z")
+        );
+        assert_eq!(
+            iso("2022-04-01T08:51:42").as_deref(),
+            Some("2022-04-01T08:51:42.0000000")
+        );
+        assert_eq!(iso("2022-04-01T08:51:42.x"), None);
+        assert_eq!(iso("2022-04-01 08:51:42"), None);
+    }
 
     #[test]
     fn times() {

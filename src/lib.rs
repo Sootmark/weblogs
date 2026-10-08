@@ -5,6 +5,10 @@
 //!   and combined with the virtual host first).
 //! - [`atlassian`]: Jira and Confluence access logs, and Bitbucket's
 //!   `atlassian-bitbucket-access.log`.
+//! - [`elb`]: AWS Elastic Load Balancing access logs (classic, application
+//!   and network load balancers).
+//! - [`azure`]: Azure Application Gateway's access log (diagnostic
+//!   settings' JSON).
 //!
 //! ```no_run
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,11 +22,13 @@
 //! # }
 //! ```
 //!
-//! Text is read as UTF-8, invalid bytes replaced. Lines that can't be read
-//! go to `problems`, never a panic.
+//! Text is read as UTF-8, invalid bytes replaced. Lines (or records) that
+//! can't be read go to `problems`, never a panic.
 
 pub mod access;
 pub mod atlassian;
+pub mod azure;
+pub mod elb;
 mod time;
 
 use common::time::Ts;
@@ -40,16 +46,26 @@ pub enum Kind {
     Atlassian,
     /// Bitbucket (`address | protocol | id | user | time | …`).
     Bitbucket,
+    /// AWS Elastic Load Balancing (classic, application, network).
+    Elb,
+    /// Azure Application Gateway's access log (JSON records).
+    AzureGateway,
 }
 
 /// A request.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Request {
-    /// Its line, from 1.
+    /// Its line, from 1 (a JSON document's record: its position).
     pub line: usize,
     /// When it was logged: UTC when the log gives its offset (Apache,
-    /// nginx, Jira, Confluence), local otherwise (Bitbucket).
+    /// nginx, Jira, Confluence, ELB's classic and application load
+    /// balancers, Azure), local otherwise (Bitbucket, ELB's network load
+    /// balancers).
     pub time: Option<Ts>,
+    /// When the request came in, when the log says so apart from `time`
+    /// (an application load balancer's `request_creation_time`, a network
+    /// load balancer's `tls_connection_creation_time`).
+    pub started: Option<Ts>,
     /// The client's address (Bitbucket: every proxy's, comma-separated).
     pub client: Option<String>,
     /// The authenticated user.
@@ -76,7 +92,8 @@ pub struct Request {
     /// How long it took, in milliseconds.
     pub duration_ms: Option<u64>,
     /// The format's other values, by name (`thread`, `forwarded_for`,
-    /// `request_id`, `session`, `labels`, `bytes_read`, …).
+    /// `request_id`, `session`, `labels`, `bytes_read`, ELB's and Azure's
+    /// by theirs, …).
     pub extra: Vec<(&'static str, String)>,
 }
 
@@ -112,10 +129,13 @@ pub struct Log {
 }
 
 /// Which access log `head` starts like, if any: its first complete lines
-/// (up to five) all of one format.
+/// (up to five) all of one format, or Azure's JSON.
 #[must_use]
 pub fn detect(_name: &str, head: &[u8]) -> Option<Kind> {
     let text = String::from_utf8_lossy(head);
+    if azure::is_access(&text) {
+        return Some(Kind::AzureGateway);
+    }
     let mut lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
     // The last line may be cut where the head ends.
     if lines.len() > 1 && !text.ends_with('\n') {
@@ -125,6 +145,8 @@ pub fn detect(_name: &str, head: &[u8]) -> Option<Kind> {
     let all = |test: fn(&str) -> bool| !lines.is_empty() && lines.iter().all(|l| test(l));
     if all(atlassian::is_bitbucket) {
         Some(Kind::Bitbucket)
+    } else if all(elb::is_access) {
+        Some(Kind::Elb)
     } else if all(atlassian::is_access) {
         Some(Kind::Atlassian)
     } else if all(access::is_access) {
@@ -142,6 +164,8 @@ pub fn read(kind: Kind, data: &[u8]) -> Log {
         Kind::Access => access::parse,
         Kind::Atlassian => atlassian::parse_access,
         Kind::Bitbucket => atlassian::parse_bitbucket,
+        Kind::Elb => elb::parse,
+        Kind::AzureGateway => return azure::read(&text),
     };
     let mut log = Log::default();
     for (index, line) in text.lines().enumerate() {

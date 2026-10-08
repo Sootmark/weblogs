@@ -15,3 +15,22 @@ then the values compared, by parser:
 
 `-` is written as empty: both read it as no value. Written from plaso's
 output, not from this crate.
+
+cloud.tsv: what plaso reads from aws_elb_access.log and
+azure_application_gateway_access.json (uncompressed) with its
+text/aws_elb_access parser and jsonl/azure_application_gateway_access_log
+plugin, written by plaso.py from psort's JSON lines; one line per event:
+the file, the time (ISO 8601; the network load balancer's local times as
+if UTC), plaso's name for it, the parser, and every value plaso read, as
+name=value (see plaso.py). Made on a Debian host with Docker, the two logs
+in /tmp/oracle/in, from the crate root:
+
+  sudo docker run --rm -v /tmp/oracle:/data log2timeline/plaso:20260720 \
+    log2timeline --status_view none -q \
+    --parsers 'text/aws_elb_access,jsonl/azure_application_gateway_access_log' \
+    --storage-file /data/out.plaso /data/in
+  sudo docker run --rm -v /tmp/oracle:/data log2timeline/plaso:20260720 \
+    psort --status_view none -q -a -o json_line -w /data/out.jsonl /data/out.plaso
+  python3 -I tests/oracle/plaso.py /tmp/oracle/out.jsonl > tests/oracle/cloud.tsv
+
+(psort's -a keeps events it would drop as duplicates; none here.)

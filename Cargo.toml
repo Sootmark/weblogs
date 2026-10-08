@@ -1,9 +1,9 @@
 [package]
 name = "sootmark-weblogs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.80"
-description = "Web server access logs for forensics: Apache and nginx (common, combined, virtual host), Jira, Confluence and Bitbucket, read into requests with their client, user, time and status."
+description = "Web server access logs for forensics: Apache and nginx (common, combined, virtual host), Jira, Confluence and Bitbucket, AWS load balancers (ELB) and Azure Application Gateway, read into requests with their client, user, time and status."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Sootmark/weblogs"
 homepage = "https://sootmark.com"
