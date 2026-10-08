@@ -1,11 +1,12 @@
-"""Writes cloud.tsv from psort's JSON lines (see README): one line per
-plaso event, sorted: the log file's name, the time (ISO 8601 to the
+"""Writes cloud.tsv and atlassian.tsv from psort's JSON lines (see
+README): one line per plaso event, sorted: the log file's name, the time (ISO 8601 to the
 100 ns, local times as plaso stores them, as if UTC, so without a zone),
 what plaso calls that time, the parser, then every value plaso read, as
 name=value, sorted by name (plaso's own formatted message, and its
 bookkeeping, left out). Independent of this crate: no code shared.
 
 Run: python3 -I tests/oracle/plaso.py out.jsonl > tests/oracle/cloud.tsv
+(or atlassian.tsv, from both runs' JSON lines together)
 """
 
 import datetime

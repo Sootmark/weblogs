@@ -1,0 +1,5 @@
+2023-10-03 08:00:45,317+0000 http-nio-8080-exec-1 url: /login.jsp; user: admin INFO admin 480x1x1 1ab2c3d 192.0.2.10 /login.jsp [c.a.jira.login.LoginLoggers] login : 'admin' tried to login successfully
+2023-10-03 08:01:00,000+0000 Caesium-1-4 INFO ServiceRunner     [c.a.jira.service.DefaultServiceManager] Running service Backup
+2023-10-03 10:02:10,500+0200 http-nio-8080-exec-7 url: /rest/api/2/user; user: jsmith ERROR jsmith 482x9x2 9zz8yy7 198.51.100.7,192.0.2.1 /rest/api/2/user [c.a.j.rest.exception.ExceptionInterceptor] Returning internal server error in response
+java.lang.IllegalStateException: no such user
+	at com.example.Users.find(Users.java:42)

@@ -1,0 +1,1 @@
+2023-10-03 08:05:00,001 INFO [http-nio-7990-exec-9] john.smith 1A2B3Cx485x77x3 @9QW3ERx485x12x0 192.0.2.44 "GET /scm/ops/runbooks.git/info/refs HTTP/1.1" c.a.b.i.s.g.p.h.HttpReceivePackHook Clone of ops/runbooks

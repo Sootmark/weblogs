@@ -59,7 +59,9 @@ fn offset_minutes(zone: &str) -> Option<i32> {
     Some(sign * (hours * 60 + minutes))
 }
 
-/// `2012-10-29 00:06:26,838` (Log4j's default) as local time.
+/// `2012-10-29 00:06:26,838` (Log4j's default) as local time; with an
+/// offset after the milliseconds (`2020-06-03 10:43:10,664+0000`, Jira's)
+/// as UTC.
 pub(crate) fn log4j(text: &str) -> Option<Ts> {
     let (date, clock) = text.trim().split_once(' ')?;
     let mut date = date.splitn(3, '-');
@@ -67,6 +69,10 @@ pub(crate) fn log4j(text: &str) -> Option<Ts> {
     let month: u32 = date.next()?.parse().ok()?;
     let day: u32 = date.next()?.parse().ok()?;
     let (clock, millis) = clock.split_once([',', '.']).unwrap_or((clock, "0"));
+    let (millis, zone) = match millis.find(['+', '-']) {
+        Some(at) => (&millis[..at], Some(&millis[at..])),
+        None => (millis, None),
+    };
     let mut clock = clock.splitn(3, ':');
     let number = |t: Option<&str>| t?.parse::<i64>().ok();
     let ticks = ticks(
@@ -76,10 +82,11 @@ pub(crate) fn log4j(text: &str) -> Option<Ts> {
         number(clock.next())?,
     )?;
     let millis: i64 = millis.parse().ok().filter(|m| (0..1000).contains(m))?;
-    Some(Ts::from_local_ticks(
-        ticks + millis * 10_000,
-        Precision::Millisecond,
-    ))
+    let local = Ts::from_local_ticks(ticks + millis * 10_000, Precision::Millisecond);
+    match zone {
+        None => Some(local),
+        Some(zone) => Some(local.assume_offset(offset_minutes(zone)?)),
+    }
 }
 
 /// ISO 8601 (`2020-01-11T16:55:20.356586Z`, `2021-10-14T22:17:11+00:00`):
@@ -169,5 +176,10 @@ mod tests {
             Some("2012-10-29T00:06:26.8380000")
         );
         assert_eq!(log4j("2012-13-29 00:06:26,838"), None);
+        assert_eq!(
+            iso(log4j("2020-06-03 10:43:10,664+0200")).as_deref(),
+            Some("2020-06-03T08:43:10.6640000Z")
+        );
+        assert_eq!(log4j("2020-06-03 10:43:10,664+02"), None);
     }
 }

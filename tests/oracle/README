@@ -34,3 +34,39 @@ in /tmp/oracle/in, from the crate root:
   python3 -I tests/oracle/plaso.py /tmp/oracle/out.jsonl > tests/oracle/cloud.tsv
 
 (psort's -a keeps events it would drop as duplicates; none here.)
+
+atlassian.tsv: what plaso reads from atlassian-bitbucket.log,
+atlassian-bitbucket-audit.log, atlassian-confluence.log and
+atlassian-jira.log (tests/fixtures/plaso/atlassian/, uncompressed) with
+its text/atlassian_bitbucket, text/bitbucket_audit,
+text/atlassian_confluence and text/atlassian_jira plugins, in cloud.tsv's
+form (written by plaso.py). The Bitbucket plugins and the Jira and
+Confluence ones are run apart: with all four enabled, plaso's
+text/atlassian_bitbucket claims Jira's and Confluence's samples too (its
+guard against their bracketed logger doesn't hold), leaving
+"] method" at the start of each message. Jira's and Confluence's plugins
+are the same grammar, so plaso reads both samples with the first,
+text/atlassian_confluence. Made on a Debian host with Docker, the
+Bitbucket logs in /tmp/oracle/a/in, Jira's and Confluence's in
+/tmp/oracle/b/in, from the crate root:
+
+  sudo docker run --rm -v /tmp/oracle/a:/data log2timeline/plaso:20260720 \
+    log2timeline --status_view none -q \
+    --parsers 'text/atlassian_bitbucket,text/bitbucket_audit' \
+    --storage-file /data/out.plaso /data/in
+  sudo docker run --rm -v /tmp/oracle/a:/data log2timeline/plaso:20260720 \
+    psort --status_view none -q -a -o json_line -w /data/out.jsonl /data/out.plaso
+  sudo docker run --rm -v /tmp/oracle/b:/data log2timeline/plaso:20260720 \
+    log2timeline --status_view none -q \
+    --parsers 'text/atlassian_confluence,text/atlassian_jira' \
+    --storage-file /data/out.plaso /data/in
+  sudo docker run --rm -v /tmp/oracle/b:/data log2timeline/plaso:20260720 \
+    psort --status_view none -q -a -o json_line -w /data/out.jsonl /data/out.plaso
+  cat /tmp/oracle/a/out.jsonl /tmp/oracle/b/out.jsonl > /tmp/oracle/ab.jsonl
+  python3 -I tests/oracle/plaso.py /tmp/oracle/ab.jsonl > tests/oracle/atlassian.tsv
+
+plaso has no sample of Jira's own layout (its Jira sample is in
+Confluence's) nor of the audit log file Jira, Confluence and Bitbucket
+Data Center write (and no parser for it): those are checked on the
+synthetic logs of tests/fixtures/synthetic/ (made by its gen.py), not
+against plaso: unverified.

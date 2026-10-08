@@ -1,0 +1,4 @@
+2023-10-03 08:03:00,123 WARN [http-nio-8090-exec-5] [atlassian.confluence.pages.DefaultPageManager] removePage Page 'Runbook' removed -- referer: https://wiki.example.com/display/OPS | url: /pages/removepage.action | traceId: 5e2a9c1b7d3f4a60 | userName: jsmith | action: removepage
+2023-10-03 08:04:00,000 ERROR [Caesium-1-2] [confluence.impl.backup.DefaultBackupManager] lambda$doBackup$0 Backup failed
+java.io.IOException: disk full
+	at com.example.Backup.write(Backup.java:7)

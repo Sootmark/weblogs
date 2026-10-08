@@ -10,6 +10,16 @@
 //! - [`azure`]: Azure Application Gateway's access log (diagnostic
 //!   settings' JSON).
 //!
+//! And Atlassian's other logs, read into entries rather than requests
+//! ([`detect_entries`], [`read_entries`]):
+//!
+//! - [`application`]: Jira's, Confluence's and Bitbucket's application
+//!   logs (`atlassian-jira.log`, `atlassian-confluence.log`,
+//!   `atlassian-bitbucket.log`).
+//! - [`audit`]: Bitbucket's audit log (`atlassian-bitbucket-audit.log`)
+//!   and the audit log file Jira, Confluence and Bitbucket Data Center
+//!   write (`log/audit/*.audit.log`, JSON lines).
+//!
 //! ```no_run
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let data = std::fs::read("/var/log/apache2/access.log")?;
@@ -26,7 +36,9 @@
 //! can't be read go to `problems`, never a panic.
 
 pub mod access;
+pub mod application;
 pub mod atlassian;
+pub mod audit;
 pub mod azure;
 pub mod elb;
 mod time;
@@ -181,6 +193,102 @@ pub fn read(kind: Kind, data: &[u8]) -> Log {
         }
     }
     log
+}
+
+/// A kind of Atlassian log of entries (not requests).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryKind {
+    /// Jira, Confluence or Bitbucket's application log
+    /// (`time level [thread] …`).
+    Application,
+    /// Bitbucket's audit log (`address | event | user | milliseconds | …`).
+    BitbucketAudit,
+    /// The audit log file of Jira, Confluence and Bitbucket Data Center
+    /// (JSON lines).
+    Audit,
+}
+
+/// An entry of an application or audit log.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Entry {
+    /// Its line, from 1 (an application entry's first).
+    pub line: usize,
+    /// When it was logged: local for application logs without an offset,
+    /// UTC otherwise (Jira's with `+0000`, audit logs').
+    pub time: Option<Ts>,
+    /// The level (`INFO`, `WARN`, …).
+    pub level: Option<String>,
+    /// The thread (`http-nio-8080-exec-1`).
+    pub thread: Option<String>,
+    /// The logger, a Java class (`c.a.b.m.r.DefaultRepositoryManager`).
+    pub logger: Option<String>,
+    /// The method that logged it (Confluence's: `startCluster`).
+    pub method: Option<String>,
+    /// The user: the one acting, or an audit event's author.
+    pub user: Option<String>,
+    /// The client's address (Bitbucket: every proxy's, comma-separated).
+    pub client: Option<String>,
+    /// What was done: an audit event (`RepositoryCreatedEvent`, `User
+    /// created`), Bitbucket's request action (`TransactionService/Transact`).
+    pub action: Option<String>,
+    /// What an audit event was done to (`PROJECT/myproject`, `admin (USER)`).
+    pub object: Option<String>,
+    /// The message; an application entry's continuation lines (a stack
+    /// trace) after a newline.
+    pub message: Option<String>,
+    /// The format's other values, by name (`request_id`, `session`, `url`,
+    /// `details`, `area`, `changed`, …).
+    pub extra: Vec<(&'static str, String)>,
+}
+
+impl Entry {
+    /// An extra value by name.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.extra
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, v)| v.as_str())
+    }
+}
+
+/// A log's entries and what couldn't be read.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Entries {
+    /// The entries, in order.
+    pub entries: Vec<Entry>,
+    /// The lines that couldn't be read, with why.
+    pub problems: Vec<String>,
+}
+
+/// Which Atlassian application or audit log `head` starts like, if any:
+/// its first complete line.
+#[must_use]
+pub fn detect_entries(_name: &str, head: &[u8]) -> Option<EntryKind> {
+    let text = String::from_utf8_lossy(head);
+    let text = text.trim_start_matches('\u{feff}');
+    let first = text.lines().find(|l| !l.trim().is_empty())?;
+    if audit::is_audit(first) {
+        Some(EntryKind::Audit)
+    } else if audit::is_bitbucket(first) {
+        Some(EntryKind::BitbucketAudit)
+    } else if application::is_application(first) {
+        Some(EntryKind::Application)
+    } else {
+        None
+    }
+}
+
+/// Read a log of entries of `kind`.
+#[must_use]
+pub fn read_entries(kind: EntryKind, data: &[u8]) -> Entries {
+    let text = String::from_utf8_lossy(data);
+    let text = text.trim_start_matches('\u{feff}');
+    match kind {
+        EntryKind::Application => application::read(text),
+        EntryKind::BitbucketAudit => audit::read(text, audit::parse_bitbucket),
+        EntryKind::Audit => audit::read(text, audit::parse_audit),
+    }
 }
 
 /// `-` and empty mean none.
