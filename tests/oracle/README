@@ -1,0 +1,17 @@
+plaso.tsv: what plaso (the log2timeline/plaso:20260720 Docker image) reads
+from the logs in tests/fixtures/plaso/ with its text/apache_access,
+text/confluence_access, text/jira_access and text/bitbucket_access parsers
+(psort -o json_line), one line per event: the file, the time (microseconds
+since 1970, UTC; Bitbucket's local times as plaso keeps them, as if UTC),
+then the values compared, by parser:
+
+- apache_access: address, user, request, status, bytes, referer, user agent,
+  virtual host, port;
+- confluence and jira: address, user, method, path, protocol, status, bytes,
+  referer, user agent, duration (ms), thread, forwarded-for;
+- bitbucket: address, user, method, path, protocol, user agent, status,
+  bytes read, bytes written, duration (ms), protocol, request id, labels,
+  session, SSH repository, mesh execution id.
+
+`-` is written as empty: both read it as no value. Written from plaso's
+output, not from this crate.
